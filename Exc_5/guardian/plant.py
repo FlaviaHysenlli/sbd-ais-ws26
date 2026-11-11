@@ -92,14 +92,20 @@ class KafkaSink:
 
     def __init__(self, args):
         from confluent_kafka import Producer
+        self.topic = "readings"
         self.producer = Producer({
             "bootstrap.servers": args.bootstrap,
-            # TODO: more settings?
+            "enable.idempotence": True,  # retries cannot duplicate or reorder messages
+            "linger.ms": 20,    #collect messages for up to 20 ms, then send them as one batch
         })
 
     def send(self, reading):
         # TODO: send the reading (as JSON) to Kafka: self.producer.produce(...)
-        raise NotImplementedError("KafkaSink.send() is part of your solution (Stage C1)")
+        try:
+            self.producer.produce(self.topic, key=reading["machine_id"], value=json.dumps(reading))
+        except BufferError:         # the local send queue is full: let it drain, then retry
+            self.producer.poll(0.5)
+            self.producer.produce(self.topic, key=reading["machine_id"], value=json.dumps(reading))
 
     def tick(self):
         """Called once per tick, after all readings of that tick were sent."""
